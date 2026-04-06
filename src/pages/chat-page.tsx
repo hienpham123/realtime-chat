@@ -1,6 +1,6 @@
 import { Plus, PlusCircle, Smile, Paperclip, Send } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ChatEmptyState } from '@/components/chat/chat-empty-state';
 import { ChatHeader } from '@/components/chat/chat-header';
 import { MessageListSkeleton } from '@/components/chat/message-list-skeleton/message-list-skeleton';
@@ -29,7 +29,10 @@ import { useMyProfile } from '@/hooks/use-my-profile';
 import { useMessages } from '@/hooks/use-messages';
 import type { ConversationSummary } from '@/types';
 import { signOut } from '@/services/auth-service';
-import { markConversationRead } from '@/services/conversation-service';
+import {
+  leaveConversation,
+  markConversationRead,
+} from '@/services/conversation-service';
 import { buildConversationSharedSummary } from '@/utils/conversation-shared-summary';
 import { resolveDisplayName } from '@/utils/display-name';
 
@@ -49,6 +52,8 @@ const subtitleForConversation = (c: ConversationSummary | undefined): string => 
 
 export const ChatPage = () => {
   const navigate = useNavigate();
+  const { conversationId: routeConversationId, email: routeEmailParam } =
+    useParams<{ conversationId?: string; email?: string }>();
   const { user } = useAuth();
   const enabled = Boolean(user);
   const userId = user?.id ?? '';
@@ -70,6 +75,7 @@ export const ChatPage = () => {
   const [composerReady, setComposerReady] = useState(false);
   const [mobileTab, setMobileTab] = useState<ChatMobileNavTab>('messages');
   const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const usermailHandledRef = useRef(false);
 
   const { notice, showNotice, dismiss } = useDismissibleNotice();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +90,9 @@ export const ChatPage = () => {
     hasMore,
     loadOlder,
     send,
+    updateMessage,
+    deleteMessage,
+    toggleReaction,
   } = useMessages(enabled && Boolean(selectedConversationId), selectedConversationId);
 
   const lastMessageId = messages[messages.length - 1]?.id;
@@ -125,7 +134,70 @@ export const ChatPage = () => {
   const myAvatarUrl = myProfile?.avatar_url ?? null;
 
   useEffect(() => {
+    usermailHandledRef.current = false;
+  }, [routeEmailParam]);
+
+  useEffect(() => {
+    if (!routeEmailParam) {
+      return;
+    }
+    if (profilesLoading) {
+      return;
+    }
+    if (usermailHandledRef.current) {
+      return;
+    }
+    let decoded = routeEmailParam;
+    try {
+      decoded = decodeURIComponent(routeEmailParam);
+    } catch {
+      // use raw segment
+    }
+    const normalized = decoded.trim().toLowerCase();
+    const match = profiles.find((p) => p.email.toLowerCase() === normalized);
+    if (match) {
+      usermailHandledRef.current = true;
+      void (async () => {
+        const { conversationId, error: err } = await openDirectChat(match.id);
+        if (err) {
+          showNotice(err);
+          navigate('/chat', { replace: true });
+          return;
+        }
+        if (conversationId) {
+          setSelectedConversationId(conversationId);
+          navigate(`/chat/${conversationId}`, { replace: true });
+        }
+      })();
+      return;
+    }
+    usermailHandledRef.current = true;
+    showNotice('No user found with that email.');
+    navigate('/chat', { replace: true });
+  }, [
+    routeEmailParam,
+    profiles,
+    profilesLoading,
+    openDirectChat,
+    navigate,
+    showNotice,
+  ]);
+
+  useEffect(() => {
     if (conversations.length === 0) {
+      return;
+    }
+    if (routeEmailParam) {
+      return;
+    }
+    if (routeConversationId) {
+      const match = conversations.some((c) => c.id === routeConversationId);
+      if (match) {
+        setSelectedConversationId(routeConversationId);
+        return;
+      }
+      showNotice('Conversation not found.');
+      navigate('/chat', { replace: true });
       return;
     }
     setSelectedConversationId((prev) => {
@@ -140,7 +212,35 @@ export const ChatPage = () => {
         ) ?? conversations[0];
       return preferred?.id ?? null;
     });
-  }, [conversations]);
+  }, [
+    conversations,
+    routeConversationId,
+    routeEmailParam,
+    navigate,
+    showNotice,
+  ]);
+
+  useEffect(() => {
+    if (routeEmailParam) {
+      return;
+    }
+    if (routeConversationId) {
+      return;
+    }
+    if (!selectedConversationId) {
+      return;
+    }
+    if (!conversations.some((c) => c.id === selectedConversationId)) {
+      return;
+    }
+    navigate(`/chat/${selectedConversationId}`, { replace: true });
+  }, [
+    routeConversationId,
+    routeEmailParam,
+    selectedConversationId,
+    conversations,
+    navigate,
+  ]);
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === selectedConversationId),
@@ -190,6 +290,14 @@ export const ChatPage = () => {
     messageListRef.current?.scrollToBottom();
   }, [messages.length, showNotice]);
 
+  const handleSelectConversation = useCallback(
+    (id: string) => {
+      setSelectedConversationId(id);
+      navigate(`/chat/${id}`, { replace: true });
+    },
+    [navigate],
+  );
+
   const handleStartDirectWith = useCallback(
     async (otherUserId: string) => {
       const { conversationId, error: err } = await openDirectChat(otherUserId);
@@ -199,9 +307,10 @@ export const ChatPage = () => {
       }
       if (conversationId) {
         setSelectedConversationId(conversationId);
+        navigate(`/chat/${conversationId}`, { replace: true });
       }
     },
-    [openDirectChat, showNotice],
+    [openDirectChat, showNotice, navigate],
   );
 
   const handleCreateGroup = useCallback(
@@ -212,11 +321,37 @@ export const ChatPage = () => {
       }
       if (conversationId) {
         setSelectedConversationId(conversationId);
+        navigate(`/chat/${conversationId}`, { replace: true });
       }
       return { error: null as string | null };
     },
-    [openNewGroup],
+    [openNewGroup, navigate],
   );
+
+  const handleLeaveConversation = useCallback(async () => {
+    if (!selectedConversationId) {
+      return;
+    }
+    const ok = window.confirm(
+      'Leave this conversation? You will need a new invite to rejoin private chats.',
+    );
+    if (!ok) {
+      return;
+    }
+    const { error: err } = await leaveConversation(selectedConversationId);
+    if (err) {
+      showNotice(err);
+      return;
+    }
+    setSelectedConversationId(null);
+    navigate('/chat', { replace: true });
+    void reloadConversationsQuiet();
+  }, [
+    selectedConversationId,
+    showNotice,
+    navigate,
+    reloadConversationsQuiet,
+  ]);
 
   const handleBrowseChannels = useCallback(() => {
     showNotice(
@@ -273,7 +408,7 @@ export const ChatPage = () => {
         profiles={profiles}
         selectedConversationId={selectedConversationId}
         profilesLoading={profilesLoading}
-        onSelectConversation={setSelectedConversationId}
+        onSelectConversation={handleSelectConversation}
         onStartDirectWith={(id) => void handleStartDirectWith(id)}
         onOpenCreateGroup={() => setGroupModalOpen(true)}
         onSignOut={() => void handleSignOut()}
@@ -300,6 +435,7 @@ export const ChatPage = () => {
           conversationSubtitle={headerSubtitle}
           conversationMembers={activeConversation?.members}
           currentUserId={user.id}
+          showConversationMenu={Boolean(selectedConversationId)}
           onVideoCall={() =>
             showNotice('Video calls are not available in this demo.')
           }
@@ -307,6 +443,7 @@ export const ChatPage = () => {
             showNotice('Voice calls are not available in this demo.')
           }
           onInfo={handleInfo}
+          onLeaveConversation={() => void handleLeaveConversation()}
         />
         {notice ? (
           <ChatNoticeBanner message={notice} onDismiss={dismiss} />
@@ -345,11 +482,14 @@ export const ChatPage = () => {
                 hasMore={hasMore}
                 loadingMore={loadingMore}
                 onLoadOlder={loadOlder}
+                onUpdateMessage={updateMessage}
+                onDeleteMessage={deleteMessage}
+                onToggleReaction={toggleReaction}
               />
             ) : null}
             {showEmpty ? (
               <footer className="shrink-0 border-t border-teams-border bg-white px-4 py-6 sm:px-8">
-                <div className="mx-auto w-full max-w-4xl">
+                <div className="mx-auto w-full">
                   <div className="flex cursor-not-allowed items-center gap-3 rounded-lg border border-teams-border bg-teams-canvas p-2 opacity-60 grayscale">
                     <button
                       type="button"

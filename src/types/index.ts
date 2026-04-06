@@ -15,25 +15,42 @@ export interface MessageAttachment {
   size?: number;
 }
 
+export interface MessageReactionDbRow {
+  emoji: string;
+  user_id: string;
+}
+
 export interface MessageRow {
   id: string;
   content: string;
   user_id: string;
   conversation_id: string;
   created_at: string;
+  edited_at?: string | null;
+  deleted_at?: string | null;
   attachments?: unknown;
   profiles: ProfileRow | ProfileRow[] | null;
+  message_reactions?: MessageReactionDbRow[] | null;
+}
+
+export interface MessageReactionChip {
+  emoji: string;
+  userIds: string[];
 }
 
 export interface ChatMessage {
   id: string;
+  conversationId: string;
   content: string;
   user_id: string;
   created_at: string;
+  edited_at: string | null;
+  deleted_at: string | null;
   userEmail: string;
   userDisplayName: string;
   userAvatarUrl: string | null;
   attachments: MessageAttachment[];
+  reactions: MessageReactionChip[];
 }
 
 export type ConversationKind = 'channel' | 'direct' | 'group';

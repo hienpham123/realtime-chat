@@ -89,7 +89,7 @@ export const SettingsPage = () => {
     <div className="min-h-screen bg-teams-canvas px-4 py-10">
       <div className="mx-auto w-full max-w-lg">
         <Link
-          to="/"
+          to="/chat"
           className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:text-primary-hover"
         >
           <ArrowLeft className="h-4 w-4" strokeWidth={2} />

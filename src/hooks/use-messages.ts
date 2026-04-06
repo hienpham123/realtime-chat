@@ -4,7 +4,10 @@ import { uploadChatAttachment } from '@/services/chat-attachment-service';
 import {
   fetchMessagesPage,
   insertMessage,
+  softDeleteMessage,
   subscribeToMessageInsertsForActiveConversation,
+  toggleMessageReaction,
+  updateMessageContent,
 } from '@/services/message-service';
 import type { MessageAttachment } from '@/types';
 import type { ChatMessage } from '@/types';
@@ -103,6 +106,10 @@ export const useMessages = (enabled: boolean, conversationId: string | null) => 
   ]);
 
   const upsertMessage = useCallback((msg: ChatMessage) => {
+    const active = conversationIdRef.current;
+    if (active && msg.conversationId !== active) {
+      return;
+    }
     setMessages((prev) => {
       const byId = new Map(prev.map((m) => [m.id, m]));
       byId.set(msg.id, msg);
@@ -180,6 +187,57 @@ export const useMessages = (enabled: boolean, conversationId: string | null) => 
     [conversationId, upsertMessage],
   );
 
+  const updateMessage = useCallback(
+    async (
+      messageId: string,
+      text: string,
+    ): Promise<{ error: string | null }> => {
+      const { message, error: err } = await updateMessageContent(messageId, text);
+      if (err) {
+        setError(err);
+        return { error: err };
+      }
+      if (message) {
+        upsertMessage(message);
+      }
+      return { error: null };
+    },
+    [upsertMessage],
+  );
+
+  const deleteMessage = useCallback(
+    async (messageId: string): Promise<{ error: string | null }> => {
+      const { message, error: err } = await softDeleteMessage(messageId);
+      if (err) {
+        setError(err);
+        return { error: err };
+      }
+      if (message) {
+        upsertMessage(message);
+      }
+      return { error: null };
+    },
+    [upsertMessage],
+  );
+
+  const toggleReaction = useCallback(
+    async (
+      messageId: string,
+      emoji: string,
+    ): Promise<{ error: string | null }> => {
+      const { message, error: err } = await toggleMessageReaction(messageId, emoji);
+      if (err) {
+        setError(err);
+        return { error: err };
+      }
+      if (message) {
+        upsertMessage(message);
+      }
+      return { error: null };
+    },
+    [upsertMessage],
+  );
+
   const state = useMemo(
     () => ({
       messages,
@@ -190,6 +248,9 @@ export const useMessages = (enabled: boolean, conversationId: string | null) => 
       loadOlder,
       send,
       reload: loadInitial,
+      updateMessage,
+      deleteMessage,
+      toggleReaction,
     }),
     [
       messages,
@@ -200,6 +261,9 @@ export const useMessages = (enabled: boolean, conversationId: string | null) => 
       loadOlder,
       send,
       loadInitial,
+      updateMessage,
+      deleteMessage,
+      toggleReaction,
     ],
   );
 

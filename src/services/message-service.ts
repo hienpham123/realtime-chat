@@ -1,6 +1,12 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getSupabaseClient, syncRealtimeAuth } from '@/lib/supabase-client';
-import type { ChatMessage, MessageAttachment, MessageRow } from '@/types';
+import type {
+  ChatMessage,
+  MessageAttachment,
+  MessageReactionChip,
+  MessageReactionDbRow,
+  MessageRow,
+} from '@/types';
 import { resolveDisplayName } from '@/utils/display-name';
 
 const MESSAGE_PAGE_SIZE = 20;
@@ -33,32 +39,57 @@ export const parseAttachments = (raw: unknown): MessageAttachment[] => {
   return out;
 };
 
+const aggregateReactions = (
+  rows: MessageReactionDbRow[] | null | undefined,
+): MessageReactionChip[] => {
+  if (!rows?.length) {
+    return [];
+  }
+  const byEmoji = new Map<string, string[]>();
+  for (const r of rows) {
+    const list = byEmoji.get(r.emoji) ?? [];
+    list.push(r.user_id);
+    byEmoji.set(r.emoji, list);
+  }
+  return [...byEmoji.entries()].map(([emoji, userIds]) => ({ emoji, userIds }));
+};
+
 const mapRowToChatMessage = (row: MessageRow): ChatMessage => {
   const profile = Array.isArray(row.profiles)
     ? row.profiles[0]
     : row.profiles;
   const email = profile?.email ?? 'Unknown';
   const avatar = profile?.avatar_url?.trim() || null;
+  const reactionRows = Array.isArray(row.message_reactions)
+    ? row.message_reactions
+    : [];
   return {
     id: row.id,
+    conversationId: row.conversation_id,
     content: row.content,
     user_id: row.user_id,
     created_at: row.created_at,
+    edited_at: row.edited_at ?? null,
+    deleted_at: row.deleted_at ?? null,
     userEmail: email,
     userDisplayName: resolveDisplayName(email, profile?.display_name),
     userAvatarUrl: avatar,
     attachments: parseAttachments(row.attachments),
+    reactions: aggregateReactions(reactionRows),
   };
 };
 
-const messageSelect = `
+export const messageSelect = `
   id,
   content,
   user_id,
   conversation_id,
   created_at,
+  edited_at,
+  deleted_at,
   attachments,
-  profiles ( email, display_name, avatar_url )
+  profiles ( email, display_name, avatar_url ),
+  message_reactions ( emoji, user_id )
 `;
 
 export const fetchMessagesPage = async (
@@ -162,6 +193,120 @@ export const insertMessage = async (
   }
 };
 
+export const updateMessageContent = async (
+  messageId: string,
+  content: string,
+): Promise<{ message: ChatMessage | null; error: string | null }> => {
+  try {
+    await syncRealtimeAuth();
+    const supabase = getSupabaseClient();
+    const trimmed = content.trim();
+    if (!trimmed) {
+      return { message: null, error: 'Message cannot be empty' };
+    }
+    const { data, error } = await supabase
+      .from('messages')
+      .update({
+        content: trimmed,
+        edited_at: new Date().toISOString(),
+      })
+      .eq('id', messageId)
+      .select(messageSelect)
+      .single();
+
+    if (error) {
+      return { message: null, error: error.message };
+    }
+    if (!data) {
+      return { message: null, error: 'No row returned' };
+    }
+    return { message: mapRowToChatMessage(data as MessageRow), error: null };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to update message';
+    return { message: null, error: message };
+  }
+};
+
+export const softDeleteMessage = async (
+  messageId: string,
+): Promise<{ message: ChatMessage | null; error: string | null }> => {
+  try {
+    await syncRealtimeAuth();
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('messages')
+      .update({
+        deleted_at: new Date().toISOString(),
+        content: '',
+        attachments: [],
+      })
+      .eq('id', messageId)
+      .select(messageSelect)
+      .single();
+
+    if (error) {
+      return { message: null, error: error.message };
+    }
+    if (!data) {
+      return { message: null, error: 'No row returned' };
+    }
+    return { message: mapRowToChatMessage(data as MessageRow), error: null };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to delete message';
+    return { message: null, error: message };
+  }
+};
+
+export const toggleMessageReaction = async (
+  messageId: string,
+  emoji: string,
+): Promise<{ message: ChatMessage | null; error: string | null }> => {
+  try {
+    await syncRealtimeAuth();
+    const supabase = getSupabaseClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      return { message: null, error: userError?.message ?? 'Not authenticated' };
+    }
+    const userId = userData.user.id;
+    const { data: existing, error: findErr } = await supabase
+      .from('message_reactions')
+      .select('id')
+      .eq('message_id', messageId)
+      .eq('user_id', userId)
+      .eq('emoji', emoji)
+      .maybeSingle();
+
+    if (findErr) {
+      return { message: null, error: findErr.message };
+    }
+
+    if (existing?.id) {
+      const { error: delErr } = await supabase
+        .from('message_reactions')
+        .delete()
+        .eq('id', existing.id);
+      if (delErr) {
+        return { message: null, error: delErr.message };
+      }
+    } else {
+      const { error: insErr } = await supabase.from('message_reactions').insert({
+        message_id: messageId,
+        user_id: userId,
+        emoji,
+      });
+      if (insErr) {
+        return { message: null, error: insErr.message };
+      }
+    }
+
+    return fetchMessageById(messageId);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Failed to update reaction';
+    return { message: null, error: message };
+  }
+};
+
 type InsertPayload = { new: Record<string, unknown> };
 
 type InsertRow = {
@@ -171,10 +316,14 @@ type InsertRow = {
   conversation_id?: string;
   created_at?: string;
   attachments?: unknown;
+  deleted_at?: string | null;
 };
 
 const mapInsertPayloadToMessage = (raw: InsertRow): ChatMessage | null => {
   if (!raw.id || !raw.user_id || !raw.created_at) {
+    return null;
+  }
+  if (raw.deleted_at) {
     return null;
   }
   const content = typeof raw.content === 'string' ? raw.content : '';
@@ -182,15 +331,21 @@ const mapInsertPayloadToMessage = (raw: InsertRow): ChatMessage | null => {
   if (!content.trim() && attachments.length === 0) {
     return null;
   }
+  const cid =
+    typeof raw.conversation_id === 'string' ? raw.conversation_id : '';
   return {
     id: raw.id,
+    conversationId: cid,
     content,
     user_id: raw.user_id,
     created_at: raw.created_at,
+    edited_at: null,
+    deleted_at: null,
     userEmail: 'Unknown',
     userDisplayName: 'Unknown',
     userAvatarUrl: null,
     attachments,
+    reactions: [],
   };
 };
 
@@ -199,41 +354,71 @@ const normalizeUuid = (value: unknown): string =>
     .replace(/-/g, '')
     .toLowerCase();
 
+type ReactionPayload = {
+  message_id?: string;
+};
+
 export const subscribeToMessageInsertsForActiveConversation = (
   getActiveConversationId: () => string | null,
-  onInsert: (message: ChatMessage) => void,
+  onUpsert: (message: ChatMessage) => void,
 ): { unsubscribe: () => void } => {
   const supabase = getSupabaseClient();
   let channel: RealtimeChannel | null = null;
   let cancelled = false;
-  const channelName = 'messages:all-visible';
+  const channelName = 'messages:conversation-realtime';
 
-  const handler = (payload: InsertPayload) => {
+  const isActiveConversation = (conversationId: unknown): boolean => {
     const active = getActiveConversationId();
     if (!active) {
+      return false;
+    }
+    return normalizeUuid(conversationId) === normalizeUuid(active);
+  };
+
+  const refreshMessage = (messageId: unknown) => {
+    if (typeof messageId !== 'string' || !messageId) {
+      return;
+    }
+    void (async () => {
+      const { message, error } = await fetchMessageById(messageId);
+      if (error || !message) {
+        return;
+      }
+      if (!isActiveConversation(message.conversationId)) {
+        return;
+      }
+      onUpsert(message);
+    })();
+  };
+
+  const onMessageInsert = (payload: InsertPayload) => {
+    if (!isActiveConversation(payload.new?.conversation_id)) {
       return;
     }
     const raw = payload.new as InsertRow;
-    if (normalizeUuid(raw.conversation_id) !== normalizeUuid(active)) {
-      return;
-    }
     const quick = mapInsertPayloadToMessage(raw);
     if (quick) {
-      onInsert(quick);
+      onUpsert(quick);
     }
     if (!raw?.id) {
       return;
     }
-    const messageId = raw.id;
-    void (async () => {
-      if (!messageId) {
-        return;
-      }
-      const { message, error } = await fetchMessageById(messageId);
-      if (!error && message) {
-        onInsert(message);
-      }
-    })();
+    refreshMessage(raw.id);
+  };
+
+  const onMessageUpdate = (payload: InsertPayload) => {
+    if (!isActiveConversation(payload.new?.conversation_id)) {
+      return;
+    }
+    const id = payload.new?.id;
+    refreshMessage(id);
+  };
+
+  const onReactionChange = (payload: { new: unknown; old: unknown }) => {
+    const n = payload.new as ReactionPayload | null;
+    const o = payload.old as ReactionPayload | null;
+    const messageId = n?.message_id ?? o?.message_id;
+    refreshMessage(messageId);
   };
 
   void (async () => {
@@ -250,7 +435,34 @@ export const subscribeToMessageInsertsForActiveConversation = (
           schema: 'public',
           table: 'messages',
         },
-        (p) => handler(p as InsertPayload),
+        (p) => onMessageInsert(p as InsertPayload),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+        },
+        (p) => onMessageUpdate(p as InsertPayload),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'message_reactions',
+        },
+        (p) => onReactionChange(p as { new: unknown; old: unknown }),
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'message_reactions',
+        },
+        (p) => onReactionChange(p as { new: unknown; old: unknown }),
       )
       .subscribe((status) => {
         if (!cancelled && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {

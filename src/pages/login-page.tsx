@@ -19,7 +19,7 @@ export const LoginPage = () => {
       setError(err);
       return;
     }
-    navigate('/', { replace: true });
+    navigate('/chat', { replace: true });
   };
 
   return (

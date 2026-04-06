@@ -88,7 +88,7 @@ export const ChatSidebar = ({
           >
             <PanelRight className="h-5 w-5" strokeWidth={2} />
           </button>
-          <div className="scrollbar-subtle flex w-full flex-1 flex-col items-center gap-2 overflow-y-auto overflow-x-hidden px-1.5 pb-2">
+          <div className="pt-2 scrollbar-subtle flex w-full flex-1 flex-col items-center gap-2 overflow-y-auto px-1.5 pb-2">
             {conversations.map((c) => (
               <ConversationListItem
                 key={c.id}
@@ -263,7 +263,7 @@ export const ChatSidebar = ({
               onClick={onInviteClick}
             >
               <UserPlus className="h-4 w-4 shrink-0" strokeWidth={2} />
-              <span className="truncate">Mời tham gia Teams</span>
+              <span className="truncate">Mời tham gia Teams Chats</span>
             </button>
             <div className="flex gap-1">
               <Link

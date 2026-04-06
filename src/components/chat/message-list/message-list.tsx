@@ -18,6 +18,15 @@ interface MessageListProps {
   hasMore: boolean;
   loadingMore: boolean;
   onLoadOlder: () => void;
+  onUpdateMessage?: (
+    id: string,
+    content: string,
+  ) => Promise<{ error: string | null }>;
+  onDeleteMessage?: (id: string) => Promise<{ error: string | null }>;
+  onToggleReaction?: (
+    id: string,
+    emoji: string,
+  ) => Promise<{ error: string | null }>;
 }
 
 export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
@@ -28,6 +37,9 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       hasMore,
       loadingMore,
       onLoadOlder,
+      onUpdateMessage,
+      onDeleteMessage,
+      onToggleReaction,
     },
     ref,
   ) => {
@@ -79,7 +91,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
       <div
         ref={containerRef}
         onScroll={onScroll}
-        className="scrollbar-subtle flex flex-1 flex-col space-y-6 overflow-y-auto bg-white px-4 py-4 sm:px-6 sm:py-5"
+        className="scrollbar-subtle flex flex-1 flex-col space-y-6 overflow-x-hidden overflow-y-auto bg-white px-4 py-4 sm:px-6 sm:py-5"
       >
         {hasMore ? (
           <div className="flex justify-center">
@@ -98,6 +110,10 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(
             key={m.id}
             message={m}
             isOwn={m.user_id === currentUserId}
+            currentUserId={currentUserId}
+            onUpdateMessage={onUpdateMessage}
+            onDeleteMessage={onDeleteMessage}
+            onToggleReaction={onToggleReaction}
           />
         ))}
         <div ref={bottomRef} className="h-2 shrink-0" aria-hidden />

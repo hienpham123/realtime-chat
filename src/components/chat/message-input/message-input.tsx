@@ -234,7 +234,7 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           type="file"
           multiple
           tabIndex={-1}
-          className="fixed left-[-100px] top-0 z-[100] m-0 block h-8 w-48 cursor-pointer border-0 p-0 opacity-0"
+          className="sr-only"
           aria-label="Attach files"
           onChange={onFileChange}
         />
@@ -245,12 +245,12 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
           multiple
           accept={IMAGE_ACCEPT}
           tabIndex={-1}
-          className="fixed left-[-100px] top-0 z-[100] m-0 block h-8 w-48 cursor-pointer border-0 p-0 opacity-0"
+          className="sr-only"
           aria-label="Attach images"
           onChange={onImageChange}
         />
 
-        <div className="relative mx-auto max-w-4xl">
+        <div className="relative mx-auto">
           <div className="rounded-lg border border-teams-border bg-white shadow-sm">
             {staged.length > 0 ? (
               <div className="space-y-2 border-b border-teams-border px-3 py-3">

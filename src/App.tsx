@@ -23,7 +23,7 @@ const PublicAuthLayout = () => {
     return <ChatLoading />;
   }
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/chat" replace />;
   }
   return <Outlet />;
 };
@@ -36,10 +36,13 @@ const App = () => (
         <Route path="/register" element={<RegisterPage />} />
       </Route>
       <Route element={<ProtectedLayout />}>
-        <Route path="/" element={<ChatPage />} />
+        <Route path="/" element={<Navigate to="/chat" replace />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/chat/:conversationId" element={<ChatPage />} />
+        <Route path="/usermail/:email" element={<ChatPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/chat" replace />} />
     </Routes>
   </BrowserRouter>
 );

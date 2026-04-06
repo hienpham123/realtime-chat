@@ -175,6 +175,28 @@ export const createOrGetDirectChat = async (
   }
 };
 
+export const leaveConversation = async (
+  conversationId: string,
+): Promise<{ error: string | null }> => {
+  try {
+    const supabase = getSupabaseClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      return { error: userError?.message ?? 'Not authenticated' };
+    }
+    const { error } = await supabase
+      .from('conversation_members')
+      .delete()
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userData.user.id);
+    return { error: error?.message ?? null };
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : 'Failed to leave conversation';
+    return { error: message };
+  }
+};
+
 export const createGroupChat = async (
   title: string,
   memberUserIds: string[],

@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { Info, MessageCircle, Phone, Search, Users, Video } from 'lucide-react';
+import { MdMoreVert } from 'react-icons/md';
 import { UserAvatar } from '@/components/user-avatar/user-avatar';
 import type { ConversationKind, ConversationMemberPreview } from '@/types';
 
@@ -15,9 +16,11 @@ interface ChatHeaderProps {
   conversationSubtitle: string;
   conversationMembers?: ConversationMemberPreview[];
   currentUserId?: string;
+  showConversationMenu?: boolean;
   onVideoCall?: () => void;
   onVoiceCall?: () => void;
   onInfo?: () => void;
+  onLeaveConversation?: () => void;
 }
 
 const HeaderIcon = ({ kind }: { kind: ConversationKind }) => {
@@ -124,6 +127,8 @@ export const ChatHeader = ({
   onVideoCall,
   onVoiceCall,
   onInfo,
+  showConversationMenu = false,
+  onLeaveConversation,
 }: ChatHeaderProps) => {
   const showMemberAvatars =
     !showSearch &&
@@ -193,6 +198,29 @@ export const ChatHeader = ({
         >
           <Phone className="h-5 w-5" strokeWidth={1.75} />
         </button>
+        {showConversationMenu && onLeaveConversation ? (
+          <details className="relative [&_summary::-webkit-details-marker]:hidden">
+            <summary className="flex cursor-pointer list-none items-center rounded p-2 text-teams-text-secondary transition-colors hover:bg-teams-hover">
+              <MdMoreVert className="h-5 w-5" aria-hidden />
+              <span className="sr-only">Conversation actions</span>
+            </summary>
+            <div className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] rounded-md border border-teams-border bg-white py-1 shadow-lg">
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+                onClick={() => {
+                  onLeaveConversation();
+                  const root = document.activeElement?.closest('details');
+                  if (root instanceof HTMLDetailsElement) {
+                    root.open = false;
+                  }
+                }}
+              >
+                Leave conversation
+              </button>
+            </div>
+          </details>
+        ) : null}
         <button
           type="button"
           className="ml-1 rounded border-l border-teams-border pl-3 sm:ml-2 sm:pl-4"

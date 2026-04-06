@@ -33,6 +33,9 @@ export const buildConversationSharedSummary = (
 
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!;
+    if (m.deleted_at) {
+      continue;
+    }
     for (const a of m.attachments) {
       const key = `${m.id}:${a.path}`;
       if (a.kind === 'image') {
