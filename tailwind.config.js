@@ -1,0 +1,60 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: 'class',
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        primary: 'rgb(98 100 167 / <alpha-value>)',
+        'primary-hover': 'rgb(85 88 160 / <alpha-value>)',
+        'primary-light': '#e8e7f4',
+        'primary-container': 'rgb(85 88 160 / <alpha-value>)',
+        'teams-rail': '#252423',
+        'teams-purple': 'rgb(98 100 167 / <alpha-value>)',
+        'teams-canvas': '#f3f2f1',
+        'teams-hover': '#f5f5f5',
+        'teams-border': '#edebe9',
+        'teams-text': '#323130',
+        'teams-text-secondary': '#605e5c',
+        background: '#f3f2f1',
+        surface: '#ffffff',
+        'surface-container': '#edebe9',
+        'surface-container-low': '#f5f5f5',
+        'surface-container-lowest': '#ffffff',
+        'surface-container-high': '#e1dfdd',
+        'surface-container-highest': '#d2d0ce',
+        'on-surface': '#323130',
+        'on-surface-variant': '#605e5c',
+        'on-primary': '#ffffff',
+      },
+      fontFamily: {
+        sans: [
+          '"Segoe UI"',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          '"Segoe UI Emoji"',
+          'sans-serif',
+        ],
+        headline: [
+          '"Segoe UI"',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'sans-serif',
+        ],
+        body: [
+          '"Segoe UI"',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'sans-serif',
+        ],
+      },
+      boxShadow: {
+        sunlight: '0px 12px 32px rgba(25, 28, 29, 0.06)',
+      },
+    },
+  },
+  plugins: [],
+};
