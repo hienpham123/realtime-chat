@@ -30,10 +30,15 @@ export const signUpWithPassword = async (
 ): Promise<{ user: User | null; error: string | null }> => {
   try {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase.auth.signUp({
+    const redirectTo =
+      import.meta.env.VITE_AUTH_REDIRECT_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : undefined);
+    const signUpPayload = {
       email: credentials.email.trim(),
       password: credentials.password,
-    });
+      ...(redirectTo ? { options: { emailRedirectTo: redirectTo } } : {}),
+    };
+    const { data, error } = await supabase.auth.signUp(signUpPayload);
     if (error) {
       return { user: null, error: error.message };
     }
