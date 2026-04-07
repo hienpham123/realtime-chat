@@ -8,7 +8,11 @@ import {
 import { fetchProfilesExceptSelf } from '@/services/profile-service';
 import type { ConversationSummary, PublicProfile } from '@/types';
 
-export const useConversations = (enabled: boolean, currentUserId: string) => {
+export const useConversations = (
+  enabled: boolean,
+  currentUserId: string,
+  selectedConversationId: string | null,
+) => {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [profiles, setProfiles] = useState<PublicProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,6 +67,70 @@ export const useConversations = (enabled: boolean, currentUserId: string) => {
     void loadProfiles();
   }, [enabled, currentUserId, loadConversations, loadProfiles]);
 
+  const updateUnreadFromIncomingMessage = useCallback(
+    (payload: Record<string, unknown> | null | undefined) => {
+      const newRow = payload?.new as Record<string, unknown> | undefined;
+      if (!newRow) {
+        return;
+      }
+      const conversationId =
+        typeof newRow.conversation_id === 'string'
+          ? newRow.conversation_id
+          : '';
+      if (!conversationId) {
+        return;
+      }
+      const senderId =
+        typeof newRow.user_id === 'string' ? newRow.user_id : '';
+      const createdAt =
+        typeof newRow.created_at === 'string'
+          ? newRow.created_at
+          : new Date().toISOString();
+      const lastMessagePreview =
+        typeof newRow.content === 'string' ? newRow.content.trim() : '';
+      setConversations((prev) => {
+        let changed = false;
+        const next = prev
+          .map((conv) => {
+            if (conv.id !== conversationId) {
+              return conv;
+            }
+            const isOwnMessage = senderId === currentUserId;
+            const isActiveConversation =
+              selectedConversationId !== null &&
+              selectedConversationId === conversationId;
+            const unreadCount =
+              !isOwnMessage && !isActiveConversation
+                ? conv.unread_count + 1
+                : conv.unread_count;
+            const updated: ConversationSummary = {
+              ...conv,
+              unread_count: unreadCount,
+              last_activity_at: createdAt,
+              last_message_preview:
+                lastMessagePreview || conv.last_message_preview,
+            };
+            if (
+              updated.unread_count === conv.unread_count &&
+              updated.last_activity_at === conv.last_activity_at &&
+              updated.last_message_preview === conv.last_message_preview
+            ) {
+              return conv;
+            }
+            changed = true;
+            return updated;
+          })
+          .sort(
+            (a, b) =>
+              new Date(b.last_activity_at).getTime() -
+              new Date(a.last_activity_at).getTime(),
+          );
+        return changed ? next : prev;
+      });
+    },
+    [currentUserId, selectedConversationId],
+  );
+
   useEffect(() => {
     if (!enabled || !currentUserId) {
       return;
@@ -73,15 +141,15 @@ export const useConversations = (enabled: boolean, currentUserId: string) => {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
-        () => {
-          void loadConversations(true);
+        (payload) => {
+          updateUnreadFromIncomingMessage(payload as Record<string, unknown>);
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [enabled, currentUserId, loadConversations]);
+  }, [enabled, currentUserId, updateUnreadFromIncomingMessage]);
 
   const openDirectChat = useCallback(
     async (otherUserId: string) => {
@@ -113,6 +181,16 @@ export const useConversations = (enabled: boolean, currentUserId: string) => {
     [loadConversations],
   );
 
+  const markConversationReadLocally = useCallback((conversationId: string) => {
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.id === conversationId
+          ? { ...conv, unread_count: 0 }
+          : conv,
+      ),
+    );
+  }, []);
+
   const state = useMemo(
     () => ({
       conversations,
@@ -122,6 +200,7 @@ export const useConversations = (enabled: boolean, currentUserId: string) => {
       error,
       reload: () => void loadConversations(false),
       reloadQuiet: () => void loadConversations(true),
+      markConversationReadLocally,
       openDirectChat,
       openNewGroup,
     }),

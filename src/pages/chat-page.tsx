@@ -58,6 +58,10 @@ export const ChatPage = () => {
   const enabled = Boolean(user);
   const userId = user?.id ?? '';
 
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    string | null
+  >(null);
+
   const {
     conversations,
     profiles,
@@ -67,11 +71,8 @@ export const ChatPage = () => {
     openDirectChat,
     openNewGroup,
     reloadQuiet: reloadConversationsQuiet,
-  } = useConversations(enabled, userId);
-
-  const [selectedConversationId, setSelectedConversationId] = useState<
-    string | null
-  >(null);
+    markConversationReadLocally,
+  } = useConversations(enabled, userId, selectedConversationId);
   const [composerReady, setComposerReady] = useState(false);
   const [mobileTab, setMobileTab] = useState<ChatMobileNavTab>('messages');
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -105,7 +106,7 @@ export const ChatPage = () => {
     const run = async () => {
       const { error } = await markConversationRead(selectedConversationId);
       if (!error) {
-        void reloadConversationsQuiet();
+        markConversationReadLocally(selectedConversationId);
       }
     };
 
@@ -123,7 +124,7 @@ export const ChatPage = () => {
     messagesLoading,
     messages.length,
     lastMessageId,
-    reloadConversationsQuiet,
+    markConversationReadLocally,
   ]);
 
   const email = user?.email ?? '';

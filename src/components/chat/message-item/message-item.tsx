@@ -65,8 +65,8 @@ const AttachmentBlock = ({
             target="_blank"
             rel="noopener noreferrer"
             className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${isOwn
-                ? 'border-white/30 bg-white/10 text-white hover:bg-white/15'
-                : 'border-teams-border bg-teams-canvas text-primary hover:bg-teams-hover'
+              ? 'border-white/30 bg-white/10 text-white hover:bg-white/15'
+              : 'border-teams-border bg-teams-canvas text-primary hover:bg-teams-hover'
               }`}
           >
             <FileText className="h-4 w-4 shrink-0" strokeWidth={2} />
@@ -99,6 +99,7 @@ export const MessageItem = ({
   const [draft, setDraft] = useState(text);
   const [busy, setBusy] = useState(false);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const ownActionsMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -155,19 +156,27 @@ export const MessageItem = ({
     }
   }, [draft, message.id, onUpdateMessage, text]);
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = useCallback(() => {
     if (!onDeleteMessage) {
       return;
     }
-    const ok = window.confirm('Delete this message?');
-    if (!ok) {
+    closeMenu();
+    setConfirmDeleteOpen(true);
+  }, [closeMenu, onDeleteMessage]);
+
+  const handleCancelDelete = useCallback(() => {
+    setConfirmDeleteOpen(false);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!onDeleteMessage) {
       return;
     }
-    closeMenu();
+    setConfirmDeleteOpen(false);
     setBusy(true);
     await onDeleteMessage(message.id);
     setBusy(false);
-  }, [closeMenu, message.id, onDeleteMessage]);
+  }, [message.id, onDeleteMessage]);
 
   const hasReactionChipsBelow = message.reactions.length > 0;
 
@@ -291,18 +300,17 @@ export const MessageItem = ({
   const showHoverMessageToolbar =
     !isDeleted &&
     !editing &&
-    (Boolean(onToggleReaction) || showOwnMessageMenu);
+    (showOwnMessageMenu || (!isOwn && Boolean(onToggleReaction)));
 
   const hoverMessageToolbar = showHoverMessageToolbar ? (
     <div
-      className={`absolute top-full z-20 mt-1 flex items-center gap-1 transition-opacity ${isOwn ? 'right-0' : 'left-0'} ${
-        actionsMenuOpen
+      className={`absolute top-full z-20 mt-1 flex items-center gap-1 transition-opacity ${isOwn ? 'right-0' : 'left-0'} ${actionsMenuOpen
           ? 'pointer-events-auto opacity-100'
           : 'pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100'
-      }`}
+        }`}
       role="presentation"
     >
-      {onToggleReaction && !actionsMenuOpen ? (
+      {!isOwn && onToggleReaction && !actionsMenuOpen ? (
         <div className="pointer-events-auto">
           <MessageReactionBar
             disabled={busy}
@@ -318,9 +326,9 @@ export const MessageItem = ({
           {!actionsMenuOpen ? (
             <button
               type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-xl border border-teams-border bg-white text-teams-text-secondary shadow-md transition-colors hover:bg-teams-hover"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
               aria-label="Message actions"
-              aria-expanded={false}
+              aria-expanded={actionsMenuOpen}
               aria-haspopup="menu"
               onClick={() => setActionsMenuOpen(true)}
             >
@@ -330,12 +338,12 @@ export const MessageItem = ({
             <div
               role="menu"
               aria-label="Message actions"
-              className="absolute right-0 top-full z-50 mt-1 min-w-[9rem] rounded-md border border-teams-border bg-white py-1 text-teams-text shadow-lg"
+              className="absolute right-0 top-0 z-50 mt-2 min-w-[5rem] overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-[0_14px_40px_rgba(15,23,42,0.15)]"
             >
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-teams-hover"
+                className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-slate-700 transition-colors hover:bg-slate-100"
                 onClick={() => {
                   closeMenu();
                   setEditing(true);
@@ -347,8 +355,8 @@ export const MessageItem = ({
               <button
                 type="button"
                 role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50"
-                onClick={() => void handleDelete()}
+                className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-red-700 transition-colors hover:bg-red-50"
+                onClick={() => handleDelete()}
               >
                 <Trash2 className="h-4 w-4 shrink-0" strokeWidth={2} />
                 Delete
@@ -367,78 +375,143 @@ export const MessageItem = ({
     ? 'right-0 justify-end'
     : 'left-0 justify-start';
 
-  if (isOwn) {
-    return (
+  const deleteConfirmDialog = confirmDeleteOpen ? (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          handleCancelDelete();
+        }
+      }}
+    >
       <div
-        className={`ml-auto flex max-w-[85%] flex-col items-end gap-1 ${showFloatingReactions ? 'mb-4' : ''}`}
+        className="w-full max-w-sm rounded-3xl bg-white px-6 py-5 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-message-title"
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        <span className="mr-2 text-[10px] font-semibold tracking-wide text-teams-text-secondary">
-          {metaOwn}
-        </span>
-        <div className="group flex max-w-full flex-col items-end gap-1.5">
-          <div className={`relative ${bubbleShellClass}`}>
-            {hoverMessageToolbar}
-            <div
-              className={`relative rounded-2xl rounded-br-md px-3 py-2 shadow-sm ${editing
-                  ? 'border border-teams-border bg-white text-teams-text'
-                  : 'bg-message-own text-white'
-                } ${showFloatingReactions ? 'pb-2' : ''}`}
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2
+              id="delete-message-title"
+              className="text-lg font-semibold text-slate-900"
             >
-              {bubbleBody}
-            </div>
-            {showFloatingReactions ? (
-              <div
-                className={`pointer-events-auto absolute -bottom-3 z-10 flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto scrollbar-subtle ${reactionRowAbsoluteClass}`}
-              >
-                {!actionsMenuOpen ? reactionToolbarButtons : null}
-              </div>
-            ) : null}
+              Delete message
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              This action cannot be undone. The message will be removed for your chat view.
+            </p>
           </div>
+          <button
+            type="button"
+            className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            onClick={handleCancelDelete}
+            aria-label="Close delete confirmation"
+          >
+            <X className="h-4 w-4" strokeWidth={2} />
+          </button>
+        </div>
+        <div className="flex items-center justify-end gap-3 pt-3">
+          <button
+            type="button"
+            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            onClick={handleCancelDelete}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="rounded-full bg-[#d92f2f] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#b12222]"
+            onClick={handleConfirmDelete}
+            disabled={busy}
+          >
+            Delete
+          </button>
         </div>
       </div>
+    </div>
+  ) : null;
+
+  if (isOwn) {
+    return (
+      <>
+        <div
+          className={`ml-auto flex max-w-[85%] flex-col items-end gap-1 ${showFloatingReactions ? 'mb-4' : ''}`}
+        >
+          <span className="mr-2 text-[10px] font-semibold tracking-wide text-teams-text-secondary">
+            {metaOwn}
+          </span>
+          <div className="group flex max-w-full flex-col items-end gap-1.5">
+            <div className={`relative ${bubbleShellClass}`}>
+              {hoverMessageToolbar}
+              <div
+                className={`relative rounded-2xl rounded-br-md px-3 py-2 shadow-sm ${editing
+                  ? 'border border-teams-border bg-white text-teams-text'
+                  : 'bg-message-own text-white'
+                  } ${showFloatingReactions ? 'pb-2' : ''}`}
+              >
+                {bubbleBody}
+              </div>
+              {showFloatingReactions ? (
+                <div
+                  className={`pointer-events-auto absolute -bottom-3 z-10 flex max-w-full flex-nowrap items-center gap-1 overflow-x-auto scrollbar-subtle ${reactionRowAbsoluteClass}`}
+                >
+                  {!actionsMenuOpen ? reactionToolbarButtons : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        {deleteConfirmDialog}
+      </>
     );
   }
 
   return (
-    <div className="flex max-w-[85%] items-end gap-3">
-      <UserAvatar
-        label={label}
-        email={message.userEmail}
-        imageUrl={message.userAvatarUrl}
-        sizeClass="h-8 w-8 text-xs"
-      />
-      <div
-        className={`group ml-2 flex min-w-0 flex-1 flex-col gap-1 ${showFloatingReactions ? 'mb-4' : ''}`}
-      >
-        <span className="text-[10px] font-semibold tracking-wide text-teams-text-secondary">
-          {metaOther}
-        </span>
-        <div className="flex items-end gap-2">
-          <div className={`relative ${bubbleShellClass}`}>
-            {hoverMessageToolbar}
-            <div
-              className={`relative rounded-2xl rounded-bl-md border border-transparent bg-[#F0F0F0] px-3 py-2 text-sm text-teams-text shadow-sm ${showFloatingReactions ? 'pb-2' : ''}`}
-            >
-              {bubbleBody}
-            </div>
-            {showFloatingReactions ? (
+    <>
+      <div className="flex max-w-[85%] items-end gap-3">
+        <UserAvatar
+          label={label}
+          email={message.userEmail}
+          imageUrl={message.userAvatarUrl}
+          sizeClass="h-8 w-8 text-xs"
+        />
+        <div
+          className={`group ml-2 flex min-w-0 flex-1 flex-col gap-1 ${showFloatingReactions ? 'mb-4' : ''}`}
+        >
+          <span className="text-[10px] font-semibold tracking-wide text-teams-text-secondary">
+            {metaOther}
+          </span>
+          <div className="flex items-end gap-2">
+            <div className={`relative ${bubbleShellClass}`}>
+              {hoverMessageToolbar}
               <div
-                className={`pointer-events-auto absolute -bottom-3 z-10 flex max-w-full flex-nowrap items-center gap-1 scrollbar-subtle ${reactionRowAbsoluteClass}`}
+                className={`relative rounded-2xl rounded-bl-md border border-transparent bg-[#F0F0F0] px-3 py-2 text-sm text-teams-text shadow-sm ${showFloatingReactions ? 'pb-2' : ''}`}
               >
-                {reactionToolbarButtons}
+                {bubbleBody}
               </div>
+              {showFloatingReactions ? (
+                <div
+                  className={`pointer-events-auto absolute -bottom-3 z-10 flex max-w-full flex-nowrap items-center gap-1 scrollbar-subtle ${reactionRowAbsoluteClass}`}
+                >
+                  {reactionToolbarButtons}
+                </div>
+              ) : null}
+            </div>
+            {!editing ? (
+              <time
+                className="shrink-0 pb-1 text-[11px] tabular-nums text-teams-text-secondary"
+                dateTime={message.created_at}
+              >
+                {time}
+              </time>
             ) : null}
           </div>
-          {!editing ? (
-            <time
-              className="shrink-0 pb-1 text-[11px] tabular-nums text-teams-text-secondary"
-              dateTime={message.created_at}
-            >
-              {time}
-            </time>
-          ) : null}
         </div>
       </div>
-    </div>
+      {deleteConfirmDialog}
+    </>
   );
 };
